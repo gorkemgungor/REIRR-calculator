@@ -1,17 +1,16 @@
-name: Build Windows EXE
+name: Build & Release
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -19,16 +18,62 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: |
-          pip install PyQt6 openpyxl reportlab pyinstaller
+        run: pip install PyQt6 openpyxl reportlab pyinstaller
 
       - name: Build EXE
-        run: |
-          pyinstaller LQCalculator-windows.spec
+        run: pyinstaller LQCalculator-windows.spec
 
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
+      - name: Zip artifact
+        run: Compress-Archive -Path "dist/REIR Calculator" -DestinationPath "REIR-Calculator-Windows.zip"
+
+      - uses: actions/upload-artifact@v4
         with:
           name: REIR-Calculator-Windows
-          path: dist/REIR Calculator/
-          retention-days: 30
+          path: REIR-Calculator-Windows.zip
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install PyQt6 openpyxl reportlab pyinstaller
+
+      - name: Build APP
+        run: pyinstaller LQCalculator.spec
+
+      - name: Zip artifact
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/REIR Calculator.app" "REIR-Calculator-Mac.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: REIR-Calculator-Mac
+          path: REIR-Calculator-Mac.zip
+
+  release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: REIR-Calculator-Windows
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: REIR-Calculator-Mac
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: REIR Calculator ${{ github.ref_name }}
+          files: |
+            REIR-Calculator-Windows.zip
+            REIR-Calculator-Mac.zip
