@@ -297,7 +297,7 @@ class CourseWidget(QGroupBox):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LQ Model Re-Irradiation Calculator - Radiotherapy Dose Calculator")
+        self.setWindowTitle("LQ Model Re-Irradiation Dose Calculator")
         self.setMinimumSize(1300, 900)
         self.current_oar_idx = None
         self.frozen_oars = set()
@@ -360,7 +360,7 @@ class MainWindow(QMainWindow):
 
         def lbl(text):
             l = QLabel(text)
-            l.setFont(QFont("Arial", 12))
+            l.setFont(QFont("Arial", 13))
             return l
 
         def line_edit():
@@ -982,7 +982,7 @@ class MainWindow(QMainWindow):
         c2_apply = self.c2_red_check.isChecked() and self.c3.has_values()
         c2_t_idx = self.c2_time_combo.currentIndex() if c2_apply else -1
 
-        oar_hdr = ["Frz", "OAR", "α/β", "Limit\n(EQD2)", "C1\nReduction%", "C2\nReduction%",
+        oar_hdr = ["OAR", "α/β", "Limit\n(EQD2)", "C1\nReduction%", "C2\nReduction%",
                    "Allowed\nEQD2", "C1\nEQD2", "C2\nEQD2", "C3\nEQD2", "SUM", "Status"]
         oar_rows = [oar_hdr]
         for row, oar in enumerate(OAR_DATA):
@@ -998,7 +998,6 @@ class MainWindow(QMainWindow):
             limit_str = f"{limit}" if limit is not None else "—"
             allowed_str = self.oar_table.item(row, COL_ALLOW).text()
             oar_rows.append([
-                "✓" if row in self.frozen_oars else "",
                 oar["name"], str(oar["ab"]), limit_str,
                 f"{c1_red}%" if limit is not None else "—",
                 f"{c2_red}%" if limit is not None else "—",
@@ -1008,7 +1007,7 @@ class MainWindow(QMainWindow):
             ])
 
         if len(oar_rows) > 1:
-            ow = [0.8*cm, 4.0*cm, 1.1*cm, 1.5*cm, 1.7*cm, 1.7*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm, 2.3*cm]
+            ow = [4.5*cm, 1.2*cm, 1.5*cm, 1.7*cm, 1.7*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm, 2.3*cm]
             ot = Table(oar_rows, colWidths=ow)
             os = TableStyle([
                 ('BACKGROUND', (0,0),(-1,0),colors.HexColor('#2E4057')),
@@ -1017,27 +1016,24 @@ class MainWindow(QMainWindow):
                 ('FONTSIZE', (0,0),(-1,-1),7.5),
                 ('GRID', (0,0),(-1,-1),0.3,colors.grey),
                 ('ALIGN', (1,0),(-1,-1),'CENTER'),
-                ('ALIGN', (1,0),(1,-1),'LEFT'),
+                ('ALIGN', (0,0),(0,-1),'LEFT'),
                 ('VALIGN', (0,0),(-1,-1),'MIDDLE'),
                 ('ROWBACKGROUNDS', (0,1),(-1,-1),[colors.white, colors.HexColor('#f5f5f5')]),
-                ('TEXTCOLOR', (6,1),(6,-1), colors.white),
+                ('TEXTCOLOR', (5,1),(5,-1), colors.white),
             ])
             sc_map = {"OK": '#64dc64', "VIOLATION": '#ff5050', "REVIEW": '#ffdc32'}
             for ri in range(1, len(oar_rows)):
-                if oar_rows[ri][0] == "✓":
-                    os.add('BACKGROUND', (0,ri),(5,ri), colors.HexColor('#d2ebff'))
-                    os.add('BACKGROUND', (7,ri),(10,ri), colors.HexColor('#d2ebff'))
-                # Allowed column (index 6): blue if ≥ 0 or "—", red if < 0
-                allowed_val = oar_rows[ri][6]
+                # Allowed column is now index 5
+                allowed_val = oar_rows[ri][5]
                 try:
                     allow_bg = '#3b7dd4' if float(allowed_val) >= 0 else '#dc3232'
                 except ValueError:
                     allow_bg = '#3b7dd4'
-                os.add('BACKGROUND', (6,ri),(6,ri), colors.HexColor(allow_bg))
+                os.add('BACKGROUND', (5,ri),(5,ri), colors.HexColor(allow_bg))
                 sc = sc_map.get(oar_rows[ri][-1], '#c8c8c8')
-                os.add('BACKGROUND', (11,ri),(11,ri), colors.HexColor(sc))
+                os.add('BACKGROUND', (10,ri),(10,ri), colors.HexColor(sc))
                 if oar_rows[ri][-1] == "VIOLATION":
-                    os.add('TEXTCOLOR', (11,ri),(11,ri), colors.white)
+                    os.add('TEXTCOLOR', (10,ri),(10,ri), colors.white)
             ot.setStyle(os)
             c1_info = f"C1 reduction: {TIME_INTERVALS[c1_t_idx]}" if c1_apply else "No C1 reduction"
             c2_info = f"  |  C2 reduction: {TIME_INTERVALS[c2_t_idx]}" if c2_apply else ""
