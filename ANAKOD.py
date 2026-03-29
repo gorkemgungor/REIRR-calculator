@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QLineEdit, QPushButton, QTableWidget,
     QTableWidgetItem, QGroupBox, QFileDialog,
-    QMessageBox, QHeaderView, QTabWidget, QDateEdit, QComboBox, QCheckBox, QTextEdit
+    QMessageBox, QHeaderView, QTabWidget, QDateEdit, QComboBox, QCheckBox
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont, QColor, QBrush, QPixmap
@@ -348,147 +348,33 @@ class MainWindow(QMainWindow):
     # ── Patient tab ───────────────────────────────────────────
     def build_patient_tab(self):
         outer = QWidget()
-        outer_layout = QHBoxLayout(outer)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-
-        # ── centering wrapper ──
-        center = QWidget()
-        center.setFixedWidth(900)
-        main_hl = QHBoxLayout(center)
-        main_hl.setContentsMargins(20, 20, 20, 20)
-        main_hl.setSpacing(40)
-
-        def lbl(text):
-            l = QLabel(text)
-            l.setFont(QFont("Arial", 12))
-            return l
-
-        def line_edit():
-            w = QLineEdit(); w.setMinimumHeight(30); return w
-
-        def date_edit():
-            w = QDateEdit(); w.setCalendarPopup(True); w.setDate(QDate.currentDate())
-            w.setDisplayFormat("dd/MM/yyyy")
-            w.setAlignment(Qt.AlignmentFlag.AlignCenter); w.setMinimumHeight(30); return w
-
-        # ── Left panel: patient info ──
-        left = QWidget()
-        lg = QGridLayout(left); lg.setSpacing(10)
-        lg.setColumnMinimumWidth(0, 140); lg.setColumnMinimumWidth(1, 240)
-
-        self.patient_name    = line_edit()
-        self.patient_surname = line_edit()
-        self.patient_id      = line_edit()
-        self.diagnosis       = line_edit()
-        self.physician       = line_edit()
-        self.notes           = QTextEdit(); self.notes.setMinimumHeight(90); self.notes.setMaximumHeight(120)
-
-        notes_lbl = lbl("Notes:"); notes_lbl.setAlignment(Qt.AlignmentFlag.AlignTop)
-        lg.addWidget(lbl("Patient Name:"),     0, 0); lg.addWidget(self.patient_name,    0, 1)
-        lg.addWidget(lbl("Patient Surname:"),  1, 0); lg.addWidget(self.patient_surname, 1, 1)
-        lg.addWidget(lbl("Patient ID:"),       2, 0); lg.addWidget(self.patient_id,      2, 1)
-        lg.addWidget(lbl("Medical Physicist:"),3, 0); lg.addWidget(self.diagnosis,       3, 1)
-        lg.addWidget(lbl("Physician:"),        4, 0); lg.addWidget(self.physician,       4, 1)
-        lg.addWidget(notes_lbl,                5, 0, Qt.AlignmentFlag.AlignTop)
-        lg.addWidget(self.notes,               5, 1)
-        lg.setRowStretch(6, 1)
-
-        # ── Right panel: dates + elapsed ──
-        right = QWidget()
-        rg = QGridLayout(right); rg.setSpacing(10)
-        rg.setColumnMinimumWidth(0, 30); rg.setColumnMinimumWidth(1, 130); rg.setColumnMinimumWidth(2, 180)
-
-        self.dob       = date_edit()
-        self.plan_date = date_edit()
-        self.c3_date   = date_edit(); self.c3_date.setEnabled(False)
-
-        self.c3_tick = QCheckBox()
-        self.c3_tick.toggled.connect(self._toggle_c3_date)
-
-        rg.addWidget(lbl("C1 Plan Date:"), 0, 1); rg.addWidget(self.dob,       0, 2)
-        rg.addWidget(lbl("C2 Plan Date:"), 1, 1); rg.addWidget(self.plan_date, 1, 2)
-        rg.addWidget(self.c3_tick,         2, 0, Qt.AlignmentFlag.AlignCenter)
-        rg.addWidget(lbl("C3 Plan Date:"), 2, 1); rg.addWidget(self.c3_date,   2, 2)
-
-        # separator
-        sep = QLabel(); sep.setFixedHeight(1)
-        sep.setStyleSheet("background-color: #ccc;")
-        rg.addWidget(sep, 3, 0, 1, 3)
-
-        # header
-        elapsed_header = QLabel("Date Elapsed Between Treatments")
-        elapsed_header.setFont(QFont("Arial", 15, QFont.Weight.Bold))
-        elapsed_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        elapsed_header.setStyleSheet(
-            "color: #1a4f8a; background: #e8f0fb; border-radius: 8px; padding: 8px;")
-        rg.addWidget(elapsed_header, 4, 0, 1, 3)
-
-        # single elapsed label (C1→C2 mode)
-        self.elapsed_lbl = QLabel("—")
-        self.elapsed_lbl.setFont(QFont("Arial", 15, QFont.Weight.Bold))
-        self.elapsed_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.elapsed_lbl.setStyleSheet(
-            "color: #1a4f8a; background: #e8f0fb; border-radius: 8px; padding: 8px;")
-        self.elapsed_lbl.setWordWrap(True)
-        rg.addWidget(self.elapsed_lbl, 5, 0, 1, 3)
-
-        # three elapsed labels (C3 mode)
-        self.elapsed_c1c2_lbl = QLabel(""); self.elapsed_c1c2_lbl.setVisible(False)
-        self.elapsed_c1c3_lbl = QLabel(""); self.elapsed_c1c3_lbl.setVisible(False)
-        self.elapsed_c2c3_lbl = QLabel(""); self.elapsed_c2c3_lbl.setVisible(False)
-        for l in (self.elapsed_c1c2_lbl, self.elapsed_c1c3_lbl, self.elapsed_c2c3_lbl):
-            l.setFont(QFont("Arial", 15, QFont.Weight.Bold))
-            l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            l.setStyleSheet(
-                "color: #1a4f8a; background: #e8f0fb; border-radius: 8px; padding: 8px;")
-            l.setWordWrap(True)
-        rg.addWidget(self.elapsed_c1c2_lbl, 6, 0, 1, 3)
-        rg.addWidget(self.elapsed_c1c3_lbl, 7, 0, 1, 3)
-        rg.addWidget(self.elapsed_c2c3_lbl, 8, 0, 1, 3)
-        rg.setRowStretch(9, 1)
-
-        self.dob.dateChanged.connect(self._update_elapsed)
-        self.plan_date.dateChanged.connect(self._update_elapsed)
-        self.c3_date.dateChanged.connect(self._update_elapsed)
-
-        main_hl.addWidget(left)
-        main_hl.addWidget(right)
-
-        outer_layout.addStretch()
-        outer_layout.addWidget(center)
-        outer_layout.addStretch()
+        ol = QHBoxLayout()
+        ol.addStretch()
+        w = QWidget(); w.setFixedWidth(420)
+        layout = QGridLayout(); layout.setSpacing(10)
+        fields = [
+            ("Patient Name:", "patient_name", None),
+            ("Patient ID:", "patient_id", None),
+            ("C1 Plan Date:", "dob", "date"),
+            ("C2 Plan Date:", "plan_date", "date"),
+            ("Medical Physicist:", "diagnosis", None),
+            ("Physician:", "physician", None),
+            ("Notes:", "notes", None),
+        ]
+        for i, (label, attr, ftype) in enumerate(fields):
+            layout.addWidget(QLabel(label), i, 0)
+            if ftype == "date":
+                widget = QDateEdit(); widget.setCalendarPopup(True); widget.setDate(QDate.currentDate())
+                widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            else:
+                widget = QLineEdit()
+            setattr(self, attr, widget)
+            layout.addWidget(widget, i, 1)
+        layout.setRowStretch(len(fields), 1)
+        w.setLayout(layout)
+        ol.addWidget(w); ol.addStretch()
+        outer.setLayout(ol)
         return outer
-
-    def _toggle_c3_date(self, checked):
-        self.c3_date.setEnabled(checked)
-        self.elapsed_lbl.setVisible(not checked)
-        for l in (self.elapsed_c1c2_lbl, self.elapsed_c1c3_lbl, self.elapsed_c2c3_lbl):
-            l.setVisible(checked)
-        self._update_elapsed()
-
-    def _elapsed_str(self, d1: QDate, d2: QDate) -> str:
-        if d2 < d1:
-            d1, d2 = d2, d1
-        months = (d2.year() - d1.year()) * 12 + (d2.month() - d1.month())
-        years  = months // 12
-        rem    = months % 12
-        if years > 0 and rem > 0:
-            return f"{years} yr {rem} mo"
-        elif years > 0:
-            return f"{years} yr"
-        else:
-            return f"{months} mo"
-
-    def _update_elapsed(self):
-        d1 = self.dob.date()
-        d2 = self.plan_date.date()
-        if self.c3_tick.isChecked():
-            d3 = self.c3_date.date()
-            self.elapsed_c1c2_lbl.setText(f"C1 → C2:  {self._elapsed_str(d1, d2)}")
-            self.elapsed_c1c3_lbl.setText(f"C1 → C3:  {self._elapsed_str(d1, d3)}")
-            self.elapsed_c2c3_lbl.setText(f"C2 → C3:  {self._elapsed_str(d2, d3)}")
-        else:
-            self.elapsed_lbl.setText(f"C1 → C2:  {self._elapsed_str(d1, d2)}")
 
     # ── Calculator tab ────────────────────────────────────────
     def build_main_tab(self):
@@ -884,26 +770,14 @@ class MainWindow(QMainWindow):
 
     # ── Patient info ──────────────────────────────────────────
     def get_patient_info(self):
-        c3_on = self.c3_tick.isChecked()
-        d1 = self.dob.date(); d2 = self.plan_date.date(); d3 = self.c3_date.date()
-        if c3_on:
-            elapsed = (f"C1→C2: {self._elapsed_str(d1,d2)}  |  "
-                       f"C1→C3: {self._elapsed_str(d1,d3)}  |  "
-                       f"C2→C3: {self._elapsed_str(d2,d3)}")
-        else:
-            elapsed = f"C1→C2: {self._elapsed_str(d1,d2)}"
         return {
             "name":      self.patient_name.text() or "—",
-            "surname":   self.patient_surname.text() or "—",
             "id":        self.patient_id.text() or "—",
-            "dob":       d1.toString("dd/MM/yyyy"),
-            "plan_date": d2.toString("dd/MM/yyyy"),
-            "c3_date":   d3.toString("dd/MM/yyyy") if c3_on else "—",
+            "dob":       self.dob.date().toString("dd/MM/yyyy"),
             "diagnosis": self.diagnosis.text() or "—",
             "physician": self.physician.text() or "—",
-            "notes":     self.notes.toPlainText() or "—",
-            "elapsed":   elapsed,
-            "c3_on":     c3_on,
+            "plan_date": self.plan_date.date().toString("dd/MM/yyyy"),
+            "notes":     self.notes.text() or "—",
         }
 
     # ── PDF ───────────────────────────────────────────────────
@@ -927,13 +801,10 @@ class MainWindow(QMainWindow):
         elements.append(Paragraph("RE-IRRADIATION DOSE CALCULATION", title_style))
         elements.append(Spacer(1, 0.3*cm))
 
-        c3_row = ["C3 Plan Date:", p["c3_date"], "Date Elapsed:", p["elapsed"]] if p["c3_on"] else \
-                 ["Date Elapsed:", p["elapsed"], "", ""]
-        pt_data = [["Patient Name:", p["name"], "Patient Surname:", p["surname"]],
-                   ["Patient ID:", p["id"], "Medical Physicist:", p["diagnosis"]],
-                   ["Physician:", p["physician"], "Notes:", p["notes"]],
+        pt_data = [["Patient:", p["name"], "ID:", p["id"]],
                    ["C1 Plan Date:", p["dob"], "C2 Plan Date:", p["plan_date"]],
-                   c3_row]
+                   ["Medical Physicist:", p["diagnosis"], "Physician:", p["physician"]],
+                   ["Notes:", p["notes"], "", ""]]
         pt_t = Table(pt_data, colWidths=[3*cm, 7*cm, 3*cm, 7*cm])
         pt_t.setStyle(TableStyle([
             ('FONTNAME', (0,0),(-1,-1),'Helvetica'),
@@ -1070,14 +941,9 @@ class MainWindow(QMainWindow):
         row = 1
         ws.cell(row,1,"LQ Model Calculator — Radiotherapy Dose Planner").font = Font(bold=True,size=13)
         row += 2
-        excel_fields = [("Patient Name",p["name"]),("Patient Surname",p["surname"]),
-                        ("Patient ID",p["id"]),("Medical Physicist",p["diagnosis"]),
-                        ("Physician",p["physician"]),("Notes",p["notes"]),
-                        ("C1 Plan Date",p["dob"]),("C2 Plan Date",p["plan_date"])]
-        if p["c3_on"]:
-            excel_fields.append(("C3 Plan Date", p["c3_date"]))
-        excel_fields.append(("Date Elapsed", p["elapsed"]))
-        for lbl, val in excel_fields:
+        for lbl, val in [("Patient",p["name"]),("ID",p["id"]),("C1 Plan Date",p["dob"]),
+                         ("C2 Plan Date",p["plan_date"]),("Medical Physicist",p["diagnosis"]),
+                         ("Physician",p["physician"]),("Notes",p["notes"])]:
             ws.cell(row,1,lbl).font=bf; ws.cell(row,2,val); row+=1
         row += 1
 
