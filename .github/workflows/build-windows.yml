@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: pip install PyQt6 openpyxl reportlab pyinstaller pillow
+        run: pip install "PyQt6==6.11.0" "openpyxl==3.1.5" "reportlab==4.4.10" "lxml==6.0.4" pyinstaller pillow
 
       - name: Convert PNG icon to ICO
         run: |
@@ -62,7 +62,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: pip install PyQt6 openpyxl reportlab pyinstaller
+        run: pip install "PyQt6==6.11.0" "openpyxl==3.1.5" "reportlab==4.4.10" "lxml==6.0.4" pyinstaller
 
       - name: Build .app with PyInstaller
         run: pyinstaller LQCalculator.spec

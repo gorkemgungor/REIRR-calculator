@@ -1,6 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
+
+# Collect data files for packages that need them
+reportlab_datas = collect_data_files('reportlab')
+lxml_datas      = collect_data_files('lxml')
 
 a = Analysis(
     ['main.py'],
@@ -9,15 +14,35 @@ a = Analysis(
     datas=[
         ('icon_source.png', '.'),
         ('EN.png', '.'),
+    ] + reportlab_datas + lxml_datas,
+    hiddenimports=[
+        'PyQt6.sip',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'PyQt6.QtPrintSupport',
+        'openpyxl',
+        'openpyxl.styles',
+        'openpyxl.styles.fonts',
+        'openpyxl.styles.fills',
+        'openpyxl.styles.borders',
+        'openpyxl.styles.alignment',
+        'reportlab.pdfbase',
+        'reportlab.pdfbase.ttfonts',
+        'reportlab.pdfbase.pdfmetrics',
+        'reportlab.platypus',
+        'reportlab.lib',
+        'reportlab.lib.styles',
+        'reportlab.lib.pagesizes',
+        'reportlab.lib.units',
+        'lxml',
+        'lxml.etree',
+        'lxml._elementpath',
     ],
-    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
 
@@ -58,8 +83,11 @@ app = BUNDLE(
     bundle_identifier='com.reircalculator.app',
     info_plist={
         'NSHighResolutionCapable': True,
-        'CFBundleShortVersionString': '1.0.0',
+        'NSRequiresAquaSystemAppearance': False,
+        'CFBundleShortVersionString': '1.1.1',
+        'CFBundleVersion': '1.1.1',
         'CFBundleName': 'REIR Calculator',
         'CFBundleDisplayName': 'REIR Calculator',
+        'LSMinimumSystemVersion': '11.0',
     },
 )

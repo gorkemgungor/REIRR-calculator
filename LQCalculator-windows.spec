@@ -1,6 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
+
+reportlab_datas = collect_data_files('reportlab')
+lxml_datas      = collect_data_files('lxml')
 
 a = Analysis(
     ['main.py'],
@@ -9,8 +13,31 @@ a = Analysis(
     datas=[
         ('icon_source.png', '.'),
         ('EN.png', '.'),
+    ] + reportlab_datas + lxml_datas,
+    hiddenimports=[
+        'PyQt6.sip',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'PyQt6.QtPrintSupport',
+        'openpyxl',
+        'openpyxl.styles',
+        'openpyxl.styles.fonts',
+        'openpyxl.styles.fills',
+        'openpyxl.styles.borders',
+        'openpyxl.styles.alignment',
+        'reportlab.pdfbase',
+        'reportlab.pdfbase.ttfonts',
+        'reportlab.pdfbase.pdfmetrics',
+        'reportlab.platypus',
+        'reportlab.lib',
+        'reportlab.lib.styles',
+        'reportlab.lib.pagesizes',
+        'reportlab.lib.units',
+        'lxml',
+        'lxml.etree',
+        'lxml._elementpath',
     ],
-    hiddenimports=['PyQt6.sip'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -38,6 +65,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='icon.ico',
 )
 
 coll = COLLECT(
