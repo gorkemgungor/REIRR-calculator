@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ── Windows ──────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -17,20 +18,39 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: pip install PyQt6 openpyxl reportlab pyinstaller
+      - name: Install Python dependencies
+        run: pip install PyQt6 openpyxl reportlab pyinstaller pillow
 
-      - name: Build EXE
+      - name: Convert PNG icon to ICO
+        run: |
+          python -c "
+          from PIL import Image
+          img = Image.open('icon_source.png').convert('RGBA')
+          img.save('icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          "
+
+      - name: Build EXE with PyInstaller
         run: pyinstaller LQCalculator-windows.spec
 
-      - name: Zip artifact
-        run: Compress-Archive -Path "dist/REIR Calculator" -DestinationPath "REIR-Calculator-Windows.zip"
+      - name: Download VC++ Redistributable
+        run: |
+          curl -L -o vc_redist.x64.exe `
+            "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
-      - uses: actions/upload-artifact@v4
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build Windows Installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
         with:
           name: REIR-Calculator-Windows
-          path: REIR-Calculator-Windows.zip
+          path: Output/REIR-Calculator-Setup-Windows.exe
 
+  # ── macOS ─────────────────────────────────────────────────────
   build-mac:
     runs-on: macos-latest
     steps:
@@ -41,20 +61,31 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: pip install PyQt6 openpyxl reportlab pyinstaller
 
-      - name: Build APP
+      - name: Build .app with PyInstaller
         run: pyinstaller LQCalculator.spec
 
-      - name: Zip artifact
-        run: ditto -c -k --sequesterRsrc --keepParent "dist/REIR Calculator.app" "REIR-Calculator-Mac.zip"
+      - name: Create DMG
+        run: |
+          mkdir -p dmg_staging
+          cp -R "dist/REIR Calculator.app" dmg_staging/
+          ln -s /Applications dmg_staging/Applications
+          hdiutil create \
+            -volname "REIR Calculator" \
+            -srcfolder dmg_staging \
+            -ov \
+            -format UDZO \
+            "REIR-Calculator-Mac.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Mac DMG
+        uses: actions/upload-artifact@v4
         with:
           name: REIR-Calculator-Mac
-          path: REIR-Calculator-Mac.zip
+          path: REIR-Calculator-Mac.dmg
 
+  # ── GitHub Release ────────────────────────────────────────────
   release:
     needs: [build-windows, build-mac]
     runs-on: ubuntu-latest
@@ -62,18 +93,26 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
         with:
           name: REIR-Calculator-Windows
 
-      - uses: actions/download-artifact@v4
+      - name: Download Mac artifact
+        uses: actions/download-artifact@v4
         with:
           name: REIR-Calculator-Mac
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: REIR Calculator ${{ github.ref_name }}
+          body: |
+            ## REIR Calculator ${{ github.ref_name }}
+
+            ### Installation
+            - **Windows 10/11**: `REIR-Calculator-Setup-Windows.exe` dosyasını indirip çalıştırın. Gerekirse Visual C++ Runtime otomatik kurulur.
+            - **macOS**: `REIR-Calculator-Mac.dmg` dosyasını indirin, açın ve uygulamayı Applications klasörüne sürükleyin.
           files: |
-            REIR-Calculator-Windows.zip
-            REIR-Calculator-Mac.zip
+            REIR-Calculator-Setup-Windows.exe
+            REIR-Calculator-Mac.dmg

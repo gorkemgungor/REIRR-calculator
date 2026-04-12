@@ -54,9 +54,8 @@ COL_RED2   = 5
 COL_ALLOW  = 6
 COL_C1     = 7
 COL_C2     = 8
-COL_C3     = 9
-COL_SUM    = 10
-COL_STATUS = 11
+COL_SUM    = 9
+COL_STATUS = 10
 
 INPUT_BG_DEFAULT  = "background-color: white;"
 INPUT_BG_SELECTED = "background-color: #b4dcff;"
@@ -85,6 +84,7 @@ class CourseWidget(QGroupBox):
         self.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self._updating = False
         self._on_change = on_change
+        self._dose_fr_is_auto = False  # True when dose_fr was auto-computed (not user-typed)
 
         layout = QGridLayout()
         layout.setSpacing(6)
@@ -101,11 +101,11 @@ class CourseWidget(QGroupBox):
             l.setAlignment(Qt.AlignmentFlag.AlignRight)
             return l
 
-        layout.addWidget(lbl("Dose/Fr. (Gy):"), 0, 0)
-        self.dose_fr = QLineEdit("0")
-        self.dose_fr.setMinimumWidth(90)
-        self.dose_fr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.dose_fr, 0, 1)
+        layout.addWidget(lbl("Total Dose (Gy):"), 0, 0)
+        self.total_dose = QLineEdit("0.00")
+        self.total_dose.setMinimumWidth(90)
+        self.total_dose.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.total_dose, 0, 1)
 
         layout.addWidget(lbl("# of Fractions:"), 1, 0)
         self.n_fr = QLineEdit("0")
@@ -113,11 +113,11 @@ class CourseWidget(QGroupBox):
         self.n_fr.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.n_fr, 1, 1)
 
-        layout.addWidget(lbl("Total Dose (Gy):"), 2, 0)
-        self.total_dose = QLineEdit("0.00")
-        self.total_dose.setMinimumWidth(90)
-        self.total_dose.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.total_dose, 2, 1)
+        layout.addWidget(lbl("Dose/Fr. (Gy):"), 2, 0)
+        self.dose_fr = QLineEdit("0")
+        self.dose_fr.setMinimumWidth(90)
+        self.dose_fr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.dose_fr, 2, 1)
 
         layout.addWidget(lbl("EQD2 (α/β=3):"), 3, 0)
         self.eqd2_3 = out(); layout.addWidget(self.eqd2_3, 3, 1)
@@ -149,9 +149,6 @@ class CourseWidget(QGroupBox):
 
         self.setLayout(layout)
 
-        self.dose_fr.textChanged.connect(self._dose_fr_changed)
-        self.n_fr.textChanged.connect(self._n_fr_changed)
-        self.total_dose.textChanged.connect(self._total_changed)
         self.manual_ab.currentTextChanged.connect(self._ab_changed)
 
     # ── 3-way calculation ──────────────────────────────────────
@@ -159,6 +156,7 @@ class CourseWidget(QGroupBox):
         """dose_fr changed → compute total = dose_fr x n_fr"""
         if self._updating:
             return
+        self._dose_fr_is_auto = False  # user typed this value
         self._updating = True
         d, n, ab = self.get_values()
         self.total_dose.setText(f"{d * n:.2f}")
@@ -192,11 +190,12 @@ class CourseWidget(QGroupBox):
         except ValueError:
             ab = 2.5
 
-        if d > 0:
+        if d > 0 and not self._dose_fr_is_auto:
             total = d * n
             self.total_dose.setText(f"{total:.2f}")
         elif n > 0 and total > 0:
             d = total / n
+            self._dose_fr_is_auto = True
             self.dose_fr.setText(f"{d:.2f}")
         self._recalc(d, n, ab)
         self._updating = False
@@ -233,6 +232,7 @@ class CourseWidget(QGroupBox):
             self.n_fr.setText(f"{n:.2f}")
         elif n > 0:
             d = total / n
+            self._dose_fr_is_auto = True
             self.dose_fr.setText(f"{d:.2f}")
         self._recalc(d, n, ab)
         self._updating = False
@@ -280,11 +280,36 @@ class CourseWidget(QGroupBox):
         d, n, ab = self.get_values()
         return calc_eqd2(d, n, ab)
 
+    def compute(self):
+        """Apply 3-way logic from current field values (called by Hesapla button)."""
+        try: d = float(self.dose_fr.text())
+        except ValueError: d = 0
+        try: n = float(self.n_fr.text())
+        except ValueError: n = 0
+        try: total = float(self.total_dose.text())
+        except ValueError: total = 0
+        try: ab = float(self.manual_ab.currentText())
+        except ValueError: ab = 2.5
+
+        self._updating = True
+        if d > 0 and n > 0:
+            total = d * n
+            self.total_dose.setText(f"{total:.2f}")
+        elif total > 0 and n > 0:
+            d = total / n
+            self.dose_fr.setText(f"{d:.2f}")
+        elif total > 0 and d > 0:
+            n = total / d
+            self.n_fr.setText(f"{n:.2f}")
+        self._recalc(d, n, ab)
+        self._updating = False
+
     def set_inputs_enabled(self, enabled):
         for w in [self.dose_fr, self.n_fr, self.total_dose, self.manual_ab]:
             w.setEnabled(enabled)
 
     def clear(self):
+        self._dose_fr_is_auto = False
         self._updating = True
         self.dose_fr.setText("0")
         self.n_fr.setText("0")
@@ -301,7 +326,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1300, 900)
         self.current_oar_idx = None
         self.frozen_oars = set()
-        self.oar_raw = [[0.0, 0.0, 0.0] for _ in OAR_DATA]
+        self.oar_raw = [[0.0, 0.0] for _ in OAR_DATA]
 
         en_label = QLabel()
         en_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "EN.png")
@@ -400,20 +425,14 @@ class MainWindow(QMainWindow):
 
         self.dob       = date_edit()
         self.plan_date = date_edit()
-        self.c3_date   = date_edit(); self.c3_date.setEnabled(False)
-
-        self.c3_tick = QCheckBox()
-        self.c3_tick.toggled.connect(self._toggle_c3_date)
 
         rg.addWidget(lbl("C1 Plan Date:"), 0, 1); rg.addWidget(self.dob,       0, 2)
         rg.addWidget(lbl("C2 Plan Date:"), 1, 1); rg.addWidget(self.plan_date, 1, 2)
-        rg.addWidget(self.c3_tick,         2, 0, Qt.AlignmentFlag.AlignCenter)
-        rg.addWidget(lbl("C3 Plan Date:"), 2, 1); rg.addWidget(self.c3_date,   2, 2)
 
         # separator
         sep = QLabel(); sep.setFixedHeight(1)
         sep.setStyleSheet("background-color: #ccc;")
-        rg.addWidget(sep, 3, 0, 1, 3)
+        rg.addWidget(sep, 2, 0, 1, 3)
 
         # header
         elapsed_header = QLabel("Date Elapsed Between Treatments")
@@ -421,35 +440,19 @@ class MainWindow(QMainWindow):
         elapsed_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         elapsed_header.setStyleSheet(
             "color: #1a4f8a; background: #e8f0fb; border-radius: 8px; padding: 8px;")
-        rg.addWidget(elapsed_header, 4, 0, 1, 3)
+        rg.addWidget(elapsed_header, 3, 0, 1, 3)
 
-        # single elapsed label (C1→C2 mode)
         self.elapsed_lbl = QLabel("—")
         self.elapsed_lbl.setFont(QFont("Arial", 15, QFont.Weight.Bold))
         self.elapsed_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.elapsed_lbl.setStyleSheet(
             "color: #1a4f8a; background: #e8f0fb; border-radius: 8px; padding: 8px;")
         self.elapsed_lbl.setWordWrap(True)
-        rg.addWidget(self.elapsed_lbl, 5, 0, 1, 3)
-
-        # three elapsed labels (C3 mode)
-        self.elapsed_c1c2_lbl = QLabel(""); self.elapsed_c1c2_lbl.setVisible(False)
-        self.elapsed_c1c3_lbl = QLabel(""); self.elapsed_c1c3_lbl.setVisible(False)
-        self.elapsed_c2c3_lbl = QLabel(""); self.elapsed_c2c3_lbl.setVisible(False)
-        for l in (self.elapsed_c1c2_lbl, self.elapsed_c1c3_lbl, self.elapsed_c2c3_lbl):
-            l.setFont(QFont("Arial", 15, QFont.Weight.Bold))
-            l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            l.setStyleSheet(
-                "color: #1a4f8a; background: #e8f0fb; border-radius: 8px; padding: 8px;")
-            l.setWordWrap(True)
-        rg.addWidget(self.elapsed_c1c2_lbl, 6, 0, 1, 3)
-        rg.addWidget(self.elapsed_c1c3_lbl, 7, 0, 1, 3)
-        rg.addWidget(self.elapsed_c2c3_lbl, 8, 0, 1, 3)
-        rg.setRowStretch(9, 1)
+        rg.addWidget(self.elapsed_lbl, 4, 0, 1, 3)
+        rg.setRowStretch(5, 1)
 
         self.dob.dateChanged.connect(self._update_elapsed)
         self.plan_date.dateChanged.connect(self._update_elapsed)
-        self.c3_date.dateChanged.connect(self._update_elapsed)
 
         main_hl.addWidget(left)
         main_hl.addWidget(right)
@@ -458,13 +461,6 @@ class MainWindow(QMainWindow):
         outer_layout.addWidget(center)
         outer_layout.addStretch()
         return outer
-
-    def _toggle_c3_date(self, checked):
-        self.c3_date.setEnabled(checked)
-        self.elapsed_lbl.setVisible(not checked)
-        for l in (self.elapsed_c1c2_lbl, self.elapsed_c1c3_lbl, self.elapsed_c2c3_lbl):
-            l.setVisible(checked)
-        self._update_elapsed()
 
     def _elapsed_str(self, d1: QDate, d2: QDate) -> str:
         if d2 < d1:
@@ -482,13 +478,7 @@ class MainWindow(QMainWindow):
     def _update_elapsed(self):
         d1 = self.dob.date()
         d2 = self.plan_date.date()
-        if self.c3_tick.isChecked():
-            d3 = self.c3_date.date()
-            self.elapsed_c1c2_lbl.setText(f"C1 → C2:  {self._elapsed_str(d1, d2)}")
-            self.elapsed_c1c3_lbl.setText(f"C1 → C3:  {self._elapsed_str(d1, d3)}")
-            self.elapsed_c2c3_lbl.setText(f"C2 → C3:  {self._elapsed_str(d2, d3)}")
-        else:
-            self.elapsed_lbl.setText(f"C1 → C2:  {self._elapsed_str(d1, d2)}")
+        self.elapsed_lbl.setText(f"C1 → C2:  {self._elapsed_str(d1, d2)}")
 
     # ── Calculator tab ────────────────────────────────────────
     def build_main_tab(self):
@@ -522,9 +512,97 @@ class MainWindow(QMainWindow):
         course_layout.setSpacing(6)
         for col in range(4):
             course_layout.setColumnStretch(col, 1)
-        self.c1 = CourseWidget("COURSE 1", on_change=self.on_course_changed)
-        self.c2 = CourseWidget("COURSE 2", on_change=self.on_course_changed)
-        self.c3 = CourseWidget("COURSE 3", on_change=self.on_course_changed)
+        self.c1 = CourseWidget("COURSE 1")
+        self.c2 = CourseWidget("COURSE 2")
+
+        # ── Allowed Prescribed Dose panel ─────────────────────
+        import math as _math
+
+        ap_outer = QGroupBox()
+        ap_outer.setStyleSheet(
+            "QGroupBox { background: white; border-radius: 10px; border: 1px solid #ccc; }")
+        ap_vl = QVBoxLayout(ap_outer)
+        ap_vl.setContentsMargins(10, 10, 10, 10)
+        ap_vl.setSpacing(8)
+
+        ap_title = QLabel("Allowed Prescribed Dose")
+        ap_title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        ap_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ap_title.setStyleSheet("color: black; background: transparent;")
+        ap_vl.addWidget(ap_title)
+
+        # ALLOWED EQD2 display box — big blue, same style as existing outputs
+        self.allowed_eqd2_display = QLineEdit("—")
+        self.allowed_eqd2_display.setReadOnly(True)
+        self.allowed_eqd2_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.allowed_eqd2_display.setFont(QFont("Arial", 22, QFont.Weight.Bold))
+        self.allowed_eqd2_display.setFixedHeight(56)
+        self.allowed_eqd2_display.setStyleSheet(
+            "background: #2196a8; color: white; border-radius: 8px; border: none; padding: 4px;")
+
+        eqd2_lbl = QLabel("ALLOWED EQD2")
+        eqd2_lbl.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        eqd2_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        eqd2_lbl.setStyleSheet("color: black; background: transparent;")
+
+        ap_vl.addWidget(eqd2_lbl)
+        ap_vl.addWidget(self.allowed_eqd2_display)
+
+        # Fraction number selector — white background, black text
+        frac_row = QHBoxLayout()
+        frac_lbl = QLabel("Fraction number:")
+        frac_lbl.setFont(QFont("Arial", 18))
+        frac_lbl.setStyleSheet("color: black; background: transparent;")
+        self.rx_frac_combo = QComboBox()
+        self.rx_frac_combo.addItems([str(i) for i in range(1, 41)])
+        self.rx_frac_combo.setMinimumWidth(70)
+        self.rx_frac_combo.setFixedHeight(30)
+        self.rx_frac_combo.setFont(QFont("Arial", 15))
+        self.rx_frac_combo.setEditable(True)
+        self.rx_frac_combo.lineEdit().setReadOnly(True)
+        self.rx_frac_combo.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
+        frac_row.addWidget(frac_lbl)
+        frac_row.addStretch()
+        frac_row.addWidget(self.rx_frac_combo)
+        ap_vl.addLayout(frac_row)
+
+        # Results area — white background, black font
+        results_box = QWidget()
+        results_box.setStyleSheet("background: #f5f5f5; border-radius: 8px; border: 1px solid #ddd;")
+        results_box.setMinimumHeight(80)
+        rb_vl = QVBoxLayout(results_box)
+        rb_vl.setContentsMargins(10, 8, 10, 8)
+        rb_vl.setSpacing(2)
+
+        def _res_label(text, big=False):
+            l = QLabel(text)
+            l.setFont(QFont("Arial", 22 if big else 11, QFont.Weight.Bold if big else QFont.Weight.Normal))
+            l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            l.setStyleSheet("color: black; background: transparent;")
+            return l
+
+        rb_vl.addWidget(_res_label("Total Dose"))
+        self.rx_total_lbl = _res_label("—", big=True)
+        rb_vl.addWidget(self.rx_total_lbl)
+
+        rb_vl.addSpacing(4)
+
+        rb_vl.addWidget(_res_label("Dose/Fraction"))
+        self.rx_dosepr_lbl = _res_label("—", big=True)
+        rb_vl.addWidget(self.rx_dosepr_lbl)
+
+        ap_vl.addWidget(results_box, 1)
+
+        # Pink CALCULATE button — unchanged
+        self.rx_calc_btn = QPushButton("CALCULATE")
+        self.rx_calc_btn.setFixedHeight(44)
+        self.rx_calc_btn.setFont(QFont("Arial", 13, QFont.Weight.Bold))
+        self.rx_calc_btn.setStyleSheet(
+            "QPushButton { background: #e040fb; color: white; border-radius: 8px; }"
+            "QPushButton:hover { background: #c51162; }"
+            "QPushButton:pressed { background: #880e4f; }")
+        self.rx_calc_btn.clicked.connect(self._calculate_rx_dose)
+        ap_vl.addWidget(self.rx_calc_btn)
 
         sum_box = QGroupBox("SUM")
         sum_box.setFont(QFont("Arial", 15, QFont.Weight.Bold))
@@ -570,11 +648,10 @@ class MainWindow(QMainWindow):
         c1_red_layout.addWidget(self.c1_time_combo)
         c1_red_layout.addStretch()
 
-        # C2 reduction (enabled only when C3 has values)
+        # C2 reduction
         self.c2_red_check = QCheckBox("C2 Time Reduction:")
         self.c2_red_check.setFont(QFont("Arial", 11))
         self.c2_red_check.setChecked(False)
-        self.c2_red_check.setEnabled(False)
         self.c2_time_combo = QComboBox()
         self.c2_time_combo.addItems(TIME_INTERVALS)
         self.c2_time_combo.setEnabled(False)
@@ -582,8 +659,7 @@ class MainWindow(QMainWindow):
         self.c2_time_combo.lineEdit().setReadOnly(True)
         self.c2_time_combo.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.c2_red_check.stateChanged.connect(
-            lambda s: self.c2_time_combo.setEnabled(
-                s == Qt.CheckState.Checked.value and self.c3.has_values()))
+            lambda s: self.c2_time_combo.setEnabled(s == Qt.CheckState.Checked.value))
         self.c2_red_check.stateChanged.connect(self.update_oar_table)
         self.c2_time_combo.currentIndexChanged.connect(self.update_oar_table)
 
@@ -594,14 +670,46 @@ class MainWindow(QMainWindow):
         c2_red_layout.addWidget(self.c2_time_combo)
         c2_red_layout.addStretch()
 
-        # Row 0: all 4 GroupBoxes → equal width & height
-        course_layout.addWidget(self.c1,  0, 0)
-        course_layout.addWidget(self.c2,  0, 1)
-        course_layout.addWidget(self.c3,  0, 2)
-        course_layout.addWidget(sum_box,  0, 3)
-        # Row 1: reduction controls only under C1 and C2
+        # Row 0: C1, C2, SUM, Allowed Prescribed Dose panel (spans rows 0-2)
+        course_layout.addWidget(self.c1,   0, 0)
+        course_layout.addWidget(self.c2,   0, 1)
+        course_layout.addWidget(sum_box,   0, 2)
+        course_layout.addWidget(ap_outer,  0, 3, 3, 1)
+        # Row 1: reduction controls under C1 and C2
         course_layout.addLayout(c1_red_layout, 1, 0, Qt.AlignmentFlag.AlignCenter)
         course_layout.addLayout(c2_red_layout, 1, 1, Qt.AlignmentFlag.AlignCenter)
+
+        # Row 2: Hesapla & Temizle buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(12)
+        btn_layout.addStretch()
+
+        self.calc_btn = QPushButton("CALCULATE")
+        self.calc_btn.setFixedHeight(36)
+        self.calc_btn.setMinimumWidth(140)
+        self.calc_btn.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.calc_btn.setStyleSheet(
+            "QPushButton { background: #2E4057; color: white; border-radius: 6px; padding: 4px 18px; }"
+            "QPushButton:hover { background: #3a5070; }"
+            "QPushButton:pressed { background: #1a2e40; }")
+        self.calc_btn.clicked.connect(self._calculate_courses)
+
+        self.clear_courses_btn = QPushButton("CLEAR")
+        self.clear_courses_btn.setFixedHeight(36)
+        self.clear_courses_btn.setMinimumWidth(120)
+        self.clear_courses_btn.setFont(QFont("Arial", 12))
+        self.clear_courses_btn.setStyleSheet(
+            "QPushButton { background: #888; color: white; border-radius: 6px; padding: 4px 18px; }"
+            "QPushButton:hover { background: #aaa; }"
+            "QPushButton:pressed { background: #666; }")
+        self.clear_courses_btn.clicked.connect(self._clear_courses_only)
+
+        btn_layout.addWidget(self.calc_btn)
+        btn_layout.addWidget(self.clear_courses_btn)
+        btn_layout.addStretch()
+        course_layout.addLayout(btn_layout, 2, 0, 1, 3)
+        course_layout.setColumnStretch(3, 1)
+
         main_layout.addLayout(course_layout)
 
         # Disable courses until OAR selected
@@ -613,7 +721,7 @@ class MainWindow(QMainWindow):
         self.oar_table = QTableWidget()
         headers = ["✓", "OAR", "α/β\n(Gy)", "Dose Limit\n(EQD2 Gy)",
                    "C1\nReduction%", "C2\nReduction%", "Allowed\nEQD2 (Gy)",
-                   "C1 Plan\nEQD2", "C2 Plan\nEQD2", "C3 Plan\nEQD2",
+                   "C1 Plan\nEQD2", "C2 Plan\nEQD2",
                    "SUM PLAN\nEQD2", "Status"]
         self.oar_table.setColumnCount(len(headers))
         self.oar_table.setHorizontalHeaderLabels(headers)
@@ -650,7 +758,7 @@ class MainWindow(QMainWindow):
                 it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.oar_table.setItem(row, col, it)
 
-            for col in [COL_C1, COL_C2, COL_C3]:
+            for col in [COL_C1, COL_C2]:
                 item = QTableWidgetItem("0")
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.oar_table.setItem(row, col, item)
@@ -678,7 +786,7 @@ class MainWindow(QMainWindow):
 
     # ── Helpers ───────────────────────────────────────────────
     def _set_courses_enabled(self, enabled):
-        for c in [self.c1, self.c2, self.c3]:
+        for c in [self.c1, self.c2]:
             c.set_inputs_enabled(enabled)
 
     def _set_ticks_enabled(self, enabled):
@@ -686,11 +794,7 @@ class MainWindow(QMainWindow):
             tick.setEnabled(enabled)
 
     def _update_c2_reduction_enabled(self):
-        has_c3 = self.c3.has_values()
-        self.c2_red_check.setEnabled(has_c3)
-        if not has_c3:
-            self.c2_red_check.setChecked(False)
-            self.c2_time_combo.setEnabled(False)
+        pass
 
     # ── OAR selector ──────────────────────────────────────────
     def on_oar_selected(self, combo_idx):
@@ -709,7 +813,7 @@ class MainWindow(QMainWindow):
     def _autofill_oar(self, oar_idx):
         if oar_idx in self.frozen_oars:
             return
-        for col_idx, course in enumerate([self.c1, self.c2, self.c3]):
+        for col_idx, course in enumerate([self.c1, self.c2]):
             d, n, ab = course.get_values()
             self.oar_raw[oar_idx][col_idx] = calc_eqd2(d, n, ab)
         # Update α/β column to reflect current manual α/β (use c1 as reference)
@@ -770,7 +874,7 @@ class MainWindow(QMainWindow):
     def update_sum(self):
         totals = {"total": 0, "eqd2_3": 0, "bed_3": 0,
                   "eqd2_10": 0, "bed_10": 0, "eqd2_man": 0, "bed_man": 0}
-        for c in [self.c1, self.c2, self.c3]:
+        for c in [self.c1, self.c2]:
             d, n, ab = c.get_values()
             totals["total"]    += d * n
             totals["eqd2_3"]   += calc_eqd2(d, n, 3)
@@ -791,14 +895,14 @@ class MainWindow(QMainWindow):
     def update_oar_table(self):
         """
         C1_reduced = C1_EQD2 × (1 - c1_red%)
-        C2_reduced = C2_EQD2 × (1 - c2_red%)   [only when C3 has values]
-        SUM        = C1_reduced + C2_reduced + C3_EQD2
+        C2_reduced = C2_EQD2 × (1 - c2_red%)
+        SUM        = C1_reduced + C2_reduced
         Allowed    = Dose Limit − SUM
         > 0 → green OK  |  ≤ 0 → red EXCEEDS ALLOWED  |  no limit → yellow Review
         """
         c1_apply = self.c1_red_check.isChecked()
         c1_t_idx = self.c1_time_combo.currentIndex() if c1_apply else -1
-        c2_apply = self.c2_red_check.isChecked() and self.c3.has_values()
+        c2_apply = self.c2_red_check.isChecked()
         c2_t_idx = self.c2_time_combo.currentIndex() if c2_apply else -1
 
         for row, oar in enumerate(OAR_DATA):
@@ -814,18 +918,17 @@ class MainWindow(QMainWindow):
             self.oar_table.item(row, COL_RED2).setText(red2_str)
             self.oar_table.item(row, COL_RED2).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            c1_raw, c2_raw, c3_raw = self.oar_raw[row]
+            c1_raw, c2_raw = self.oar_raw[row]
 
             c1_display = c1_raw * (1 - c1_red_pct / 100)
             c2_display = c2_raw * (1 - c2_red_pct / 100)
-            c3_display = c3_raw
 
-            for col, val in [(COL_C1, c1_display), (COL_C2, c2_display), (COL_C3, c3_display)]:
+            for col, val in [(COL_C1, c1_display), (COL_C2, c2_display)]:
                 it = self.oar_table.item(row, col)
                 it.setText(f"{val:.2f}")
                 it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            total_plan = c1_display + c2_display + c3_display
+            total_plan = c1_display + c2_display
             sum_it = self.oar_table.item(row, COL_SUM)
             sum_it.setText(f"{total_plan:.2f}")
             sum_it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -862,6 +965,64 @@ class MainWindow(QMainWindow):
         self.update_sum()
         self.update_oar_table()
 
+    def _refresh_allowed_eqd2_display(self):
+        """Update the Allowed EQD2 display box from the selected OAR row."""
+        if self.current_oar_idx is None:
+            self.allowed_eqd2_display.setText("—")
+            return
+        val = self.oar_table.item(self.current_oar_idx, COL_ALLOW).text()
+        try:
+            self.allowed_eqd2_display.setText(f"{float(val):.2f}")
+        except ValueError:
+            self.allowed_eqd2_display.setText("—")
+
+    def _calculate_rx_dose(self):
+        """Calculate Total Dose and Dose/Fraction from Allowed EQD2 and selected fractions."""
+        import math
+        try:
+            eqd2 = float(self.allowed_eqd2_display.text())
+        except ValueError:
+            self.rx_total_lbl.setText("—")
+            self.rx_dosepr_lbl.setText("—")
+            return
+
+        n = int(self.rx_frac_combo.currentText())
+
+        if eqd2 <= 0:
+            self.rx_total_lbl.setText("—")
+            self.rx_dosepr_lbl.setText("—")
+            return
+
+        ab = OAR_DATA[self.current_oar_idx]["ab"] if self.current_oar_idx is not None else 2.5
+
+        # EQD2 = n*d*(d+ab)/(2+ab)  →  n*d^2 + n*ab*d - eqd2*(2+ab) = 0
+        discriminant = ab ** 2 + 4 * eqd2 * (2 + ab) / n
+        d = (-ab + math.sqrt(discriminant)) / 2
+        total = d * n
+
+        self.rx_total_lbl.setText(f"{total:.2f} Gy")
+        self.rx_dosepr_lbl.setText(f"{d:.2f} Gy")
+
+    def _calculate_courses(self):
+        """Run 3-way calculation on each course then update tables."""
+        for course in [self.c1, self.c2]:
+            course.compute()
+        self.on_course_changed()
+        self._refresh_allowed_eqd2_display()
+
+    def _clear_courses_only(self):
+        """Clear course values but keep OAR selection and frozen rows."""
+        for c in [self.c1, self.c2]:
+            c.clear()
+        self.c2_red_check.setChecked(False)
+        if self.current_oar_idx is not None:
+            self.oar_raw[self.current_oar_idx] = [0.0, 0.0]
+        self.update_sum()
+        self.update_oar_table()
+        self.allowed_eqd2_display.setText("—")
+        self.rx_total_lbl.setText("—")
+        self.rx_dosepr_lbl.setText("—")
+
     # ── Clear ─────────────────────────────────────────────────
     def clear_all(self):
         """Clear courses and non-frozen OAR rows."""
@@ -869,41 +1030,32 @@ class MainWindow(QMainWindow):
         self.oar_selector.setCurrentIndex(0)
         self._set_courses_enabled(False)
 
-        for c in [self.c1, self.c2, self.c3]:
+        for c in [self.c1, self.c2]:
             c.clear()
-        self.c2_red_check.setEnabled(False)
         self.c2_red_check.setChecked(False)
 
         for row in range(len(OAR_DATA)):
             if row in self.frozen_oars:
                 continue
-            self.oar_raw[row] = [0.0, 0.0, 0.0]
+            self.oar_raw[row] = [0.0, 0.0]
 
         self.update_sum()
         self.update_oar_table()
 
     # ── Patient info ──────────────────────────────────────────
     def get_patient_info(self):
-        c3_on = self.c3_tick.isChecked()
-        d1 = self.dob.date(); d2 = self.plan_date.date(); d3 = self.c3_date.date()
-        if c3_on:
-            elapsed = (f"C1→C2: {self._elapsed_str(d1,d2)}  |  "
-                       f"C1→C3: {self._elapsed_str(d1,d3)}  |  "
-                       f"C2→C3: {self._elapsed_str(d2,d3)}")
-        else:
-            elapsed = f"C1→C2: {self._elapsed_str(d1,d2)}"
+        d1 = self.dob.date(); d2 = self.plan_date.date()
+        elapsed = f"C1→C2: {self._elapsed_str(d1, d2)}"
         return {
             "name":      self.patient_name.text() or "—",
             "surname":   self.patient_surname.text() or "—",
             "id":        self.patient_id.text() or "—",
             "dob":       d1.toString("dd/MM/yyyy"),
             "plan_date": d2.toString("dd/MM/yyyy"),
-            "c3_date":   d3.toString("dd/MM/yyyy") if c3_on else "—",
             "diagnosis": self.diagnosis.text() or "—",
             "physician": self.physician.text() or "—",
             "notes":     self.notes.toPlainText() or "—",
             "elapsed":   elapsed,
-            "c3_on":     c3_on,
         }
 
     # ── PDF ───────────────────────────────────────────────────
@@ -927,13 +1079,11 @@ class MainWindow(QMainWindow):
         elements.append(Paragraph("RE-IRRADIATION DOSE CALCULATION", title_style))
         elements.append(Spacer(1, 0.3*cm))
 
-        c3_row = ["C3 Plan Date:", p["c3_date"], "Date Elapsed:", p["elapsed"]] if p["c3_on"] else \
-                 ["Date Elapsed:", p["elapsed"], "", ""]
         pt_data = [["Patient Name:", p["name"], "Patient Surname:", p["surname"]],
                    ["Patient ID:", p["id"], "Medical Physicist:", p["diagnosis"]],
                    ["Physician:", p["physician"], "Notes:", p["notes"]],
                    ["C1 Plan Date:", p["dob"], "C2 Plan Date:", p["plan_date"]],
-                   c3_row]
+                   ["Date Elapsed:", p["elapsed"], "", ""]]
         pt_t = Table(pt_data, colWidths=[3*cm, 7*cm, 3*cm, 7*cm])
         pt_t.setStyle(TableStyle([
             ('FONTNAME', (0,0),(-1,-1),'Helvetica'),
@@ -950,7 +1100,7 @@ class MainWindow(QMainWindow):
         ch = ["", "Dose/Fr\n(Gy)", "# Fr", "Total\n(Gy)", "EQD2\n(α/β=3)", "BED\n(α/β=3)",
               "EQD2\n(α/β=10)", "BED\n(α/β=10)", "Manual\nα/β", "EQD2\n(manual)", "BED\n(manual)"]
         cr = [ch]
-        for lbl, c in [("COURSE 1", self.c1), ("COURSE 2", self.c2), ("COURSE 3", self.c3)]:
+        for lbl, c in [("COURSE 1", self.c1), ("COURSE 2", self.c2)]:
             d, n, ab = c.get_values()
             cr.append([lbl, f"{d:.2f}", f"{n:.2f}", f"{d*n:.2f}",
                 f"{calc_eqd2(d,n,3):.2f}", f"{calc_bed(d,n,3):.2f}",
@@ -979,17 +1129,16 @@ class MainWindow(QMainWindow):
         # OAR table
         c1_apply = self.c1_red_check.isChecked()
         c1_t_idx = self.c1_time_combo.currentIndex() if c1_apply else -1
-        c2_apply = self.c2_red_check.isChecked() and self.c3.has_values()
+        c2_apply = self.c2_red_check.isChecked()
         c2_t_idx = self.c2_time_combo.currentIndex() if c2_apply else -1
 
         oar_hdr = ["OAR", "α/β", "Limit\n(EQD2)", "C1\nReduction%", "C2\nReduction%",
-                   "Allowed\nEQD2", "C1\nEQD2", "C2\nEQD2", "C3\nEQD2", "SUM", "Status"]
+                   "Allowed\nEQD2", "C1\nEQD2", "C2\nEQD2", "SUM", "Status"]
         oar_rows = [oar_hdr]
         for row, oar in enumerate(OAR_DATA):
             c1v = self.oar_table.item(row, COL_C1).text()
             c2v = self.oar_table.item(row, COL_C2).text()
-            c3v = self.oar_table.item(row, COL_C3).text()
-            has_data = any(v not in ("0", "0.00", "") for v in [c1v, c2v, c3v])
+            has_data = any(v not in ("0", "0.00", "") for v in [c1v, c2v])
             if not (has_data or row in self.frozen_oars):
                 continue
             c1_red = oar["reduction"][c1_t_idx] if c1_apply else 0
@@ -1001,7 +1150,7 @@ class MainWindow(QMainWindow):
                 oar["name"], str(oar["ab"]), limit_str,
                 f"{c1_red}%" if limit is not None else "—",
                 f"{c2_red}%" if limit is not None else "—",
-                allowed_str, c1v, c2v, c3v,
+                allowed_str, c1v, c2v,
                 self.oar_table.item(row, COL_SUM).text(),
                 self.oar_table.item(row, COL_STATUS).text(),
             ])
@@ -1069,10 +1218,8 @@ class MainWindow(QMainWindow):
         excel_fields = [("Patient Name",p["name"]),("Patient Surname",p["surname"]),
                         ("Patient ID",p["id"]),("Medical Physicist",p["diagnosis"]),
                         ("Physician",p["physician"]),("Notes",p["notes"]),
-                        ("C1 Plan Date",p["dob"]),("C2 Plan Date",p["plan_date"])]
-        if p["c3_on"]:
-            excel_fields.append(("C3 Plan Date", p["c3_date"]))
-        excel_fields.append(("Date Elapsed", p["elapsed"]))
+                        ("C1 Plan Date",p["dob"]),("C2 Plan Date",p["plan_date"]),
+                        ("Date Elapsed", p["elapsed"])]
         for lbl, val in excel_fields:
             ws.cell(row,1,lbl).font=bf; ws.cell(row,2,val); row+=1
         row += 1
@@ -1082,7 +1229,7 @@ class MainWindow(QMainWindow):
                                  "EQD2 (manual)","BED (manual)"],1):
             c=ws.cell(row,col,h); c.fill=hf; c.font=hfont; c.alignment=ctr; c.border=bd
         row += 1
-        for lbl,course in [("COURSE 1",self.c1),("COURSE 2",self.c2),("COURSE 3",self.c3)]:
+        for lbl,course in [("COURSE 1",self.c1),("COURSE 2",self.c2)]:
             d,n,ab=course.get_values()
             for col,v in enumerate([lbl,d,round(n,2),round(d*n,2),
                 round(calc_eqd2(d,n,3),2),round(calc_bed(d,n,3),2),
@@ -1099,13 +1246,13 @@ class MainWindow(QMainWindow):
 
         for col,h in enumerate(["Frozen","OAR","α/β","Dose Limit (EQD2 Gy)","C1 Red%","C2 Red%",
                                  "Allowed Remained EQD2 (Gy)","C1 Plan EQD2","C2 Plan EQD2",
-                                 "C3 Plan EQD2","SUM PLAN EQD2","Status"],1):
+                                 "SUM PLAN EQD2","Status"],1):
             c=ws.cell(row,col,h); c.fill=hf; c.font=hfont; c.alignment=ctr; c.border=bd
         row += 1
 
         c1_apply = self.c1_red_check.isChecked()
         c1_t_idx = self.c1_time_combo.currentIndex() if c1_apply else -1
-        c2_apply = self.c2_red_check.isChecked() and self.c3.has_values()
+        c2_apply = self.c2_red_check.isChecked()
         c2_t_idx = self.c2_time_combo.currentIndex() if c2_apply else -1
         sc_xl = {"OK":"64dc64","VIOLATION":"ff5050","REVIEW":"ffdc32"}
         frz_fill = PatternFill("solid",fgColor="d2ebff")
@@ -1127,12 +1274,11 @@ class MainWindow(QMainWindow):
                   allow_str,
                   self.oar_table.item(oi,COL_C1).text(),
                   self.oar_table.item(oi,COL_C2).text(),
-                  self.oar_table.item(oi,COL_C3).text(),
                   self.oar_table.item(oi,COL_SUM).text(),status]
             alt=PatternFill("solid",fgColor="f5f5f5") if oi%2 else None
             for col,v in enumerate(vals,1):
                 c=ws.cell(row,col,v); c.border=bd; c.alignment=ctr
-                if col==12: c.fill=PatternFill("solid",fgColor=sc_xl.get(status,"c8c8c8"))
+                if col==11: c.fill=PatternFill("solid",fgColor=sc_xl.get(status,"c8c8c8"))
                 elif col==7:
                     c.fill=PatternFill("solid",fgColor=allow_bg); c.font=wfont
                 elif is_frz: c.fill=frz_fill
@@ -1140,7 +1286,7 @@ class MainWindow(QMainWindow):
             row+=1
 
         ws.column_dimensions['A'].width=8; ws.column_dimensions['B'].width=30
-        for lt in ['C','D','E','F','G','H','I','J','K']:
+        for lt in ['C','D','E','F','G','H','I','J']:
             ws.column_dimensions[lt].width=16
         wb.save(path)
         QMessageBox.information(self,"Done",f"Excel saved:\n{path}")

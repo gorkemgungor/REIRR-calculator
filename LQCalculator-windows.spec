@@ -10,7 +10,7 @@ a = Analysis(
         ('icon_source.png', '.'),
         ('EN.png', '.'),
     ],
-    hiddenimports=[],
+    hiddenimports=['PyQt6.sip'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
